@@ -51,12 +51,54 @@ interface AppContextType extends AppState {
 
 export const AppContext = createContext<AppContextType | undefined>(undefined);
 
-const getErrorMessage = (error: unknown): string => {
+const getFriendlyErrorMessage = (error: unknown): string => {
+    let errorMessage = "حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.";
+
     if (error instanceof Error) {
-        return error.message;
+        errorMessage = error.message;
+    } else if (typeof error === 'string') {
+        errorMessage = error;
     }
-    return String(error);
+
+    if (errorMessage.includes("Imagen API is only accessible to billed users")) {
+        return "خطأ الوصول: يتطلب نموذج الصور (Imagen) مفتاح API مرتبط بحساب تم تفعيل الفوترة به. يرجى التحقق من إعدادات المفتاح أو إضافة مفتاح آخر صالح.";
+    }
+    if (errorMessage.toLowerCase().includes("api key not valid")) {
+        return "مفتاح API غير صالح. يرجى التحقق من المفتاح في الإعدادات.";
+    }
+    if (errorMessage.includes("سياسات الأمان") || errorMessage.toLowerCase().includes("safety") || errorMessage.toLowerCase().includes("policy")) {
+        return "تم حظر المحتوى بسبب سياسات الأمان. حاول تعديل النص ليكون أكثر حيادية.";
+    }
+    if (errorMessage.toLowerCase().includes("resource has been exhausted") || errorMessage.toLowerCase().includes("quota")) {
+        return "تم تجاوز حد الاستخدام للمفتاح الحالي. حاول استخدام مفتاح آخر أو المحاولة لاحقًا.";
+    }
+    
+    // Check if the message is already friendly from withApiRetry
+    if (errorMessage.startsWith("فشل الطلب") || errorMessage.startsWith("فشل طلب API")) {
+        return errorMessage;
+    }
+
+    // Try to parse JSON from the error message for a cleaner message
+    try {
+        const jsonMatch = errorMessage.match(/{.*}/s); // Use 's' flag for multiline
+        if (jsonMatch && jsonMatch[0]) {
+            const errorObj = JSON.parse(jsonMatch[0]);
+            if (errorObj.error && errorObj.error.message) {
+                 return `فشل طلب API: ${errorObj.error.message}`;
+            }
+        }
+    } catch (e) {
+        // Parsing failed, ignore and fall through
+    }
+    
+    // Fallback to a truncated version if it's too long and technical
+    if (errorMessage.length > 150) {
+        return "حدث خطأ فني. يرجى مراجعة وحدة التحكم لمزيد من التفاصيل.";
+    }
+
+    return errorMessage; // Return the original message if it's short
 };
+
 
 // A helper function to wrap API calls with retry logic and better error handling
 async function withApiRetry<T>(apiCall: (apiKey: string) => Promise<T>): Promise<T> {
@@ -68,7 +110,7 @@ async function withApiRetry<T>(apiCall: (apiKey: string) => Promise<T>): Promise
     try {
         return await apiCall(initialApiKey);
     } catch (error) {
-        const errorMessage = getErrorMessage(error);
+        const errorMessage = error instanceof Error ? error.message : String(error);
         console.warn(`API call failed with key: ${initialApiKey}. Error: ${errorMessage}. Attempting to switch key and retry.`, error);
 
         // If the error is due to content policy, don't retry, just show a helpful message.
@@ -80,16 +122,17 @@ async function withApiRetry<T>(apiCall: (apiKey: string) => Promise<T>): Promise
         
         // If there's no other key to try, or we've cycled through all keys
         if (!nextApiKey || nextApiKey === initialApiKey) {
-            const finalMessage = `فشل طلب API، ولا يوجد مفاتيح أخرى للمحاولة. الخطأ الأصلي: ${errorMessage}`;
+            const friendlyMessage = getFriendlyErrorMessage(error);
+            const finalMessage = `فشل طلب API ولا يوجد مفاتيح أخرى صالحة للمحاولة. السبب: ${friendlyMessage}`;
             throw new Error(finalMessage);
         }
         
         try {
             return await apiCall(nextApiKey);
         } catch (retryError) {
-             const retryErrorMessage = getErrorMessage(retryError);
-             console.error(`API call failed again with key: ${nextApiKey}. Error: ${retryErrorMessage}`, retryError);
-             const finalMessage = `فشل طلب API حتى بعد محاولة التبديل إلى مفتاح آخر. الخطأ: ${retryErrorMessage}`;
+             console.error(`API call failed again with key: ${nextApiKey}. Error: ${retryError}`, retryError);
+             const friendlyMessage = getFriendlyErrorMessage(retryError);
+             const finalMessage = `فشل الطلب بعد محاولة تبديل المفتاح. السبب: ${friendlyMessage}`;
              throw new Error(finalMessage);
         }
     }
@@ -165,14 +208,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                 });
             } catch (imgErr) {
                  console.error(imgErr);
-                 const errorMessage = imgErr instanceof Error ? imgErr.message : 'حدث خطأ غير معروف أثناء إنشاء الصورة.';
-                 setError(errorMessage);
+                 setError(getFriendlyErrorMessage(imgErr));
                  updateState({ step: AppStep.StrategyReady });
             }
         } catch (err) {
             console.error(err);
-            const errorMessage = err instanceof Error ? err.message : 'حدث خطأ أثناء تحليل النص. الرجاء المحاولة مرة أخرى.';
-            setError(errorMessage);
+            setError(getFriendlyErrorMessage(err));
             updateState({ step: AppStep.Initial });
         }
     }, [state.article, state.artStyle, state.isTrendingTopic, addHistoryItem]);
@@ -186,8 +227,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             updateState({ backgroundImages: imageSrcs, selectedBackgroundImage: imageSrcs[0] || null });
         } catch (err) {
             console.error(err);
-            const errorMessage = err instanceof Error ? err.message : 'خطأ غير معروف في إعادة توليد الصورة.';
-            setError(errorMessage);
+            setError(getFriendlyErrorMessage(err));
         }
     }, [state.editedSummary, state.artStyle]);
 
@@ -202,7 +242,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                  await handleTitleClick(titles[0].title, true, state.analysisResult);
             }
         } catch (err) {
-            setError('خطأ في توليد العناوين القصيرة.');
+            setError(getFriendlyErrorMessage(err));
         }
     }, [state.analysisResult]);
 
@@ -218,8 +258,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             const result = await withApiRetry(apiKey => geminiService.generateVoiceoverScript(title, state.analysisResult!.description, state.analysisResult!.tags, wordCount, apiKey));
             updateState({ scriptResult: result });
         } catch (err) {
-            const errorMessage = err instanceof Error ? err.message : 'فشل توليد الاسكربت.';
-            setError(errorMessage);
+            setError(getFriendlyErrorMessage(err));
         }
     }, [state.analysisResult, state.minWordCount]);
     
