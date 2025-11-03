@@ -55,14 +55,15 @@ ${article}
 }
 
 function GENERATE_IMAGEN_THUMBNAIL_PROMPT(summary: string, artStyle: ArtStyle) {
-    return `Create a cinematic, hyper-detailed 4K thumbnail image based on this core concept: "${summary}".
+    return `Generate a symbolic and cinematic 4K thumbnail image representing this core concept: "${summary}".
     Artistic Style: ${artStyle}.
     Key Directives:
-    - Composition must be highly dynamic with dramatic, high-contrast cinematic lighting.
-    - Colors should be bold and saturated to evoke a powerful emotion.
-    - **Crucially, leave significant negative space on one side of the image** to accommodate a large text overlay later.
-    - The image must be completely clean and free of any text, letters, numbers, or logos.
-    - Final output must be professional, compelling, and have a 16:9 aspect ratio.`;
+    - Focus on abstract and metaphorical visuals rather than literal depictions.
+    - Composition must be dynamic with dramatic, high-contrast cinematic lighting.
+    - Use bold, saturated colors to evoke a powerful emotion (e.g., mystery, revelation, tension).
+    - **Crucially, ensure significant negative space is available on one side** for text overlay.
+    - The image must be completely free of any text, letters, or logos.
+    - The final image must be professional, compelling, and have a 16:9 aspect ratio.`;
 }
 
 function GENERATE_SHORT_TITLES_PROMPT(summary:string) {
@@ -204,6 +205,7 @@ export const generateThumbnailBackground = async (summary: string, artStyle: Art
             numberOfImages: 3,
             outputMimeType: 'image/jpeg',
             aspectRatio: '16:9',
+            negativePrompt: "Avoid depicting identifiable people, political symbols, specific government entities, controversial events, violence, or direct conflict. Focus on symbolism and abstract concepts.",
         },
     });
     
@@ -213,7 +215,7 @@ export const generateThumbnailBackground = async (summary: string, artStyle: Art
         return imagesData;
     }
 
-    const errorMessage = `فشلت عملية إنشاء الصورة. لم يتم استلام بيانات الصورة. قد يكون هذا بسبب عوامل الأمان.`;
+    const errorMessage = `فشلت عملية إنشاء الصورة. قد يكون المحتوى مخالفًا لسياسات الأمان. حاول تعديل "ملخص توجيه الصورة" ليكون أكثر حيادية.`;
     throw new Error(errorMessage);
 };
 
