@@ -3,7 +3,7 @@
 /**
  * هذا الملف يحتوي على جميع الخدمات المتعلقة بالتفاعل مع Google GenAI API.
  * يتضمن وظائف لتحليل المقالات، إنشاء صور مصغرة، وتوليد عناوين قصيرة.
- * كل دالة هنا تتطلب مفتاح API لتمريره، مما يسمح بالإدارة الديناميكية للمفاتيح.
+ * كل دالة هنا تتطلب مفتاح API لتمريره، مما يسمس بالإدارة الديناميكية للمفاتيح.
  */
 
 import { GoogleGenAI, Type } from "@google/genai";
@@ -201,11 +201,12 @@ export const generateThumbnailBackground = async (summary: string, artStyle: Art
     const response = await ai.models.generateImages({
         model: IMAGE_GENERATION_MODEL,
         prompt: GENERATE_IMAGEN_THUMBNAIL_PROMPT(summary, artStyle),
+        // FIX: Moved `negativePrompt` inside the `config` object.
         config: {
+            negativePrompt: "Avoid depicting identifiable people, political symbols, specific government entities, controversial events, violence, or direct conflict. Focus on symbolism and abstract concepts.",
             numberOfImages: 3,
             outputMimeType: 'image/jpeg',
             aspectRatio: '16:9',
-            negativePrompt: "Avoid depicting identifiable people, political symbols, specific government entities, controversial events, violence, or direct conflict. Focus on symbolism and abstract concepts.",
         },
     });
     
