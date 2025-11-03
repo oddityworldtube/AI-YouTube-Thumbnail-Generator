@@ -51,7 +51,14 @@ interface AppContextType extends AppState {
 
 export const AppContext = createContext<AppContextType | undefined>(undefined);
 
-// A helper function to wrap API calls with retry logic
+const getErrorMessage = (error: unknown): string => {
+    if (error instanceof Error) {
+        return error.message;
+    }
+    return String(error);
+};
+
+// A helper function to wrap API calls with retry logic and better error handling
 async function withApiRetry<T>(apiCall: (apiKey: string) => Promise<T>): Promise<T> {
     const initialApiKey = apiKeyManager.getActiveApiKey();
     if (!initialApiKey) {
@@ -61,17 +68,29 @@ async function withApiRetry<T>(apiCall: (apiKey: string) => Promise<T>): Promise
     try {
         return await apiCall(initialApiKey);
     } catch (error) {
-        console.warn(`API call failed with key: ${initialApiKey}. Attempting to switch key and retry.`, error);
+        const errorMessage = getErrorMessage(error);
+        console.warn(`API call failed with key: ${initialApiKey}. Error: ${errorMessage}. Attempting to switch key and retry.`, error);
+
+        // If the error is due to content policy, don't retry, just show a helpful message.
+        if (errorMessage.includes("سياسات الأمان") || errorMessage.toLowerCase().includes("safety") || errorMessage.toLowerCase().includes("policy")) {
+            throw new Error(`فشل إنشاء المحتوى لمخالفته سياسات الأمان. حاول تعديل المدخلات لتكون أكثر حيادية.`);
+        }
+        
         const nextApiKey = apiKeyManager.switchToNextApiKey();
+        
+        // If there's no other key to try, or we've cycled through all keys
         if (!nextApiKey || nextApiKey === initialApiKey) {
-            throw new Error("فشل طلب API، ولا يوجد مفاتيح API أخرى للمحاولة.");
+            const finalMessage = `فشل طلب API، ولا يوجد مفاتيح أخرى للمحاولة. الخطأ الأصلي: ${errorMessage}`;
+            throw new Error(finalMessage);
         }
         
         try {
             return await apiCall(nextApiKey);
         } catch (retryError) {
-             console.error(`API call failed again with key: ${nextApiKey}.`, retryError);
-             throw new Error("فشل طلب API حتى بعد محاولة التبديل إلى مفتاح آخر.");
+             const retryErrorMessage = getErrorMessage(retryError);
+             console.error(`API call failed again with key: ${nextApiKey}. Error: ${retryErrorMessage}`, retryError);
+             const finalMessage = `فشل طلب API حتى بعد محاولة التبديل إلى مفتاح آخر. الخطأ: ${retryErrorMessage}`;
+             throw new Error(finalMessage);
         }
     }
 }
