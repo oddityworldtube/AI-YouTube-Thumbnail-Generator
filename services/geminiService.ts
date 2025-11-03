@@ -6,7 +6,7 @@
  * كل دالة هنا تتطلب مفتاح API لتمريره، مما يسمس بالإدارة الديناميكية للمفاتيح.
  */
 
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenAI, Type, Modality } from "@google/genai";
 import type { AnalysisResult, ArtStyle, TitleSuggestion, ScriptResult } from '../types';
 import type { GenerateContentParameters, GenerateContentResponse } from "@google/genai";
 
@@ -15,7 +15,7 @@ import type { GenerateContentParameters, GenerateContentResponse } from "@google
 // ====================================================================================
 
 const TEXT_MODEL = "gemini-2.5-flash";
-const IMAGE_GENERATION_MODEL = "imagen-4.0-generate-001";
+const IMAGE_GENERATION_MODEL = "gemini-2.5-flash-image";
 
 // ====================================================================================
 // الـ Prompts المحسّنة (Optimized Prompts) - (No changes here)
@@ -58,12 +58,13 @@ function GENERATE_IMAGEN_THUMBNAIL_PROMPT(summary: string, artStyle: ArtStyle) {
     return `Generate a symbolic and cinematic 4K thumbnail image representing this core concept: "${summary}".
     Artistic Style: ${artStyle}.
     Key Directives:
-    - Focus on abstract and metaphorical visuals rather than literal depictions.
+    - The final image must have a 16:9 aspect ratio.
     - Composition must be dynamic with dramatic, high-contrast cinematic lighting.
     - Use bold, saturated colors to evoke a powerful emotion (e.g., mystery, revelation, tension).
     - **Crucially, ensure significant negative space is available on one side** for text overlay.
     - The image must be completely free of any text, letters, or logos.
-    - The final image must be professional, compelling, and have a 16:9 aspect ratio.`;
+    - **Do NOT include**: identifiable people, political symbols, government entities, violence, or direct conflict. Focus on symbolism and abstract concepts.
+    - The image must be professional and compelling.`;
 }
 
 function GENERATE_SHORT_TITLES_PROMPT(summary:string) {
@@ -198,24 +199,31 @@ export const analyzeArticle = async (article: string, useSearchGrounding: boolea
 
 export const generateThumbnailBackground = async (summary: string, artStyle: ArtStyle, apiKey: string): Promise<string[]> => {
     const ai = getAIClient(apiKey);
+    const promptText = GENERATE_IMAGEN_THUMBNAIL_PROMPT(summary, artStyle);
 
-    // FIX: The Imagen API expects `negativePrompt` at the top level.
-    // The installed SDK version's TypeScript types incorrectly place it inside `config`,
-    // causing a runtime API error. We bypass the type check using `any` to send the correct structure.
-    const requestParams: any = {
-        model: IMAGE_GENERATION_MODEL,
-        prompt: GENERATE_IMAGEN_THUMBNAIL_PROMPT(summary, artStyle),
-        negativePrompt: "Avoid depicting identifiable people, political symbols, specific government entities, controversial events, violence, or direct conflict. Focus on symbolism and abstract concepts.",
-        config: {
-            numberOfImages: 3,
-            outputMimeType: 'image/jpeg',
-            aspectRatio: '16:9',
-        },
+    const generateSingleImage = async (): Promise<string | null> => {
+        const response = await ai.models.generateContent({
+            model: IMAGE_GENERATION_MODEL,
+            contents: {
+                parts: [{ text: promptText }],
+            },
+            config: {
+                responseModalities: [Modality.IMAGE],
+            },
+        });
+
+        for (const part of response.candidates?.[0]?.content?.parts || []) {
+            if (part.inlineData) {
+                return part.inlineData.data;
+            }
+        }
+        return null;
     };
 
-    const response = await ai.models.generateImages(requestParams);
-    
-    const imagesData = response.generatedImages?.map(img => img.image?.imageBytes).filter(Boolean) as string[];
+    // Generate 3 images in parallel as the new model only creates one per request.
+    const imagePromises = [generateSingleImage(), generateSingleImage(), generateSingleImage()];
+    const imagesData = (await Promise.all(imagePromises)).filter(Boolean) as string[];
+
 
     if (imagesData && imagesData.length > 0) {
         return imagesData;
