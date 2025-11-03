@@ -3,8 +3,11 @@
 const API_KEYS_STORAGE_KEY = 'gemini_api_keys';
 const CURRENT_KEY_INDEX_KEY = 'gemini_api_key_current_index';
 
-// Initialize with the key from environment variables if available, as a fallback
-const initialApiKey = process.env.API_KEY || process.env.GEMINI_API_KEY;
+// Safely access the environment variable. This will be replaced by Vite during the build process
+// on platforms like Vercel, but this safe access prevents errors in development environments
+// where `import.meta.env` might not be defined.
+const initialApiKey = typeof import.meta.env !== 'undefined' ? import.meta.env.VITE_API_KEY : undefined;
+
 
 const getInitialKeys = (): string[] => {
     try {
