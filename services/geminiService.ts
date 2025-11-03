@@ -198,17 +198,22 @@ export const analyzeArticle = async (article: string, useSearchGrounding: boolea
 
 export const generateThumbnailBackground = async (summary: string, artStyle: ArtStyle, apiKey: string): Promise<string[]> => {
     const ai = getAIClient(apiKey);
-    const response = await ai.models.generateImages({
+
+    // FIX: The Imagen API expects `negativePrompt` at the top level.
+    // The installed SDK version's TypeScript types incorrectly place it inside `config`,
+    // causing a runtime API error. We bypass the type check using `any` to send the correct structure.
+    const requestParams: any = {
         model: IMAGE_GENERATION_MODEL,
         prompt: GENERATE_IMAGEN_THUMBNAIL_PROMPT(summary, artStyle),
-        // FIX: Moved `negativePrompt` inside the `config` object.
+        negativePrompt: "Avoid depicting identifiable people, political symbols, specific government entities, controversial events, violence, or direct conflict. Focus on symbolism and abstract concepts.",
         config: {
-            negativePrompt: "Avoid depicting identifiable people, political symbols, specific government entities, controversial events, violence, or direct conflict. Focus on symbolism and abstract concepts.",
             numberOfImages: 3,
             outputMimeType: 'image/jpeg',
             aspectRatio: '16:9',
         },
-    });
+    };
+
+    const response = await ai.models.generateImages(requestParams);
     
     const imagesData = response.generatedImages?.map(img => img.image?.imageBytes).filter(Boolean) as string[];
 
