@@ -60,9 +60,6 @@ const getFriendlyErrorMessage = (error: unknown): string => {
         errorMessage = error;
     }
 
-    if (errorMessage.includes("Imagen API is only accessible to billed users")) {
-        return "خطأ الوصول: يتطلب نموذج الصور (Imagen) مفتاح API مرتبط بحساب تم تفعيل الفوترة به. يرجى التحقق من إعدادات المفتاح أو إضافة مفتاح آخر صالح.";
-    }
     if (errorMessage.toLowerCase().includes("api key not valid")) {
         return "مفتاح API غير صالح. يرجى التحقق من المفتاح في الإعدادات.";
     }
